@@ -45,13 +45,16 @@ function App() {
     if (!el) return;
     el.innerHTML = mermaidGraph;
     el.removeAttribute("data-processed");
-    Promise.resolve(mermaid.run({ nodes: [el] })).then(() => {
+    mermaid.run({ nodes: [el] }).then(() => {
       el.querySelectorAll(".node").forEach((node) => {
         const label = node.querySelector(".nodeLabel")?.textContent?.trim();
         if (!label) return;
         node.style.cursor = "pointer";
         node.addEventListener("click", () => setHighlightedSheet(label));
       });
+    }).catch((err) => {
+      console.error("Mermaid rendering failed:", err);
+      setError("Failed to render dependency graph — try reloading the page.");
     });
   }, [mermaidGraph]);
 
