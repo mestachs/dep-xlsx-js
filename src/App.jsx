@@ -10,7 +10,6 @@ import CellDependentsPanel from "./components/CellDependentsPanel.jsx";
 
 mermaid.initialize({
   theme: "base",
-  fontFamily: "Virgil, sans-serif",
   themeVariables: {
     primaryColor: "#eff6ff",
     primaryTextColor: "#1e293b",
