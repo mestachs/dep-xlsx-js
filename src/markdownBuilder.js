@@ -11,6 +11,14 @@ function escapeAttr(value) {
         .replace(/>/g, '&gt;');
 }
 
+// A sheet name rendered as a clickable link (data-sheet-ref only, no
+// data-cell-ref) — clicking it selects that sheet in the Find Cell
+// Dependents & Dependencies panel below, without picking a specific cell.
+function sheetRefLink(sheetName) {
+    const attr = escapeAttr(sheetName);
+    return `<code data-sheet-ref="${attr}" class="sheet-ref-link">${sheetName}</code>`;
+}
+
 export function buildMarkdownSummary(sheetNames, sheetDependencies, workbook, initialVisibility, graph, sheetFormulaDetails) {
     const summaryLines = [];
     summaryLines.push('# XLSX Dependency Analysis');
@@ -36,7 +44,7 @@ export function buildMarkdownSummary(sheetNames, sheetDependencies, workbook, in
         const usedByThisSheet = Array.from(sheetDependencies[sheetName] || []);
         if (usedByThisSheet.length > 0) {
             summaryLines.push(`- Used by this sheet:`);
-            usedByThisSheet.forEach(sheet => summaryLines.push(`  - ${sheet}`)); // Indented list item
+            usedByThisSheet.forEach(sheet => summaryLines.push(`  - ${sheetRefLink(sheet)}`)); // Indented list item
         } else {
             summaryLines.push('- Used by this sheet: None');
         }
@@ -47,7 +55,7 @@ export function buildMarkdownSummary(sheetNames, sheetDependencies, workbook, in
         });
         if (usesThisSheet.length > 0) {
             summaryLines.push(`- Uses this sheet:`);
-            usesThisSheet.forEach(sheet => summaryLines.push(`  - ${sheet}`)); // Indented list item
+            usesThisSheet.forEach(sheet => summaryLines.push(`  - ${sheetRefLink(sheet)}`)); // Indented list item
         } else {
             summaryLines.push('- Uses this sheet: None');
         }

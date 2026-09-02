@@ -7,6 +7,7 @@ import { marked } from "marked";
 import { buildMarkdownSummary } from "./markdownBuilder.js";
 import PanZoom from "./components/PanZoom.jsx";
 import CellDependentsPanel from "./components/CellDependentsPanel.jsx";
+import PanelControls from "./components/PanelControls.jsx";
 
 mermaid.initialize({
   theme: "base",
@@ -46,6 +47,10 @@ function App() {
   const [highlightedSheet, setHighlightedSheet] = useState(null);
   const [sheetUrlInput, setSheetUrlInput] = useState("");
   const [urlLoading, setUrlLoading]     = useState(false);
+  // Per-panel collapse (hide body, keep header) and the single panel — if
+  // any — currently maximized to fill the whole main area.
+  const [collapsedPanels, setCollapsedPanels] = useState({ summary: false, graph: false, find: false });
+  const [maximizedPanel, setMaximizedPanel]   = useState(null);
 
   const sheetNamesRef        = useRef(null);
   const sheetDependenciesRef = useRef(null);
@@ -55,6 +60,22 @@ function App() {
 
   const generateGraph = (sheetNames, sheetDependencies, direction, visibility) =>
     buildMermaidGraph(sheetNames, sheetDependencies, direction, visibility);
+
+  const toggleCollapse = (key) =>
+    setCollapsedPanels((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const toggleMaximize = (key) =>
+    setMaximizedPanel((prev) => (prev === key ? null : key));
+
+  // Escape restores the maximized panel, as a fallback to its own button.
+  useEffect(() => {
+    if (!maximizedPanel) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setMaximizedPanel(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [maximizedPanel]);
 
   useEffect(() => {
     if (!mermaidGraph) return;
@@ -67,7 +88,10 @@ function App() {
         const label = node.querySelector(".nodeLabel")?.textContent?.trim();
         if (!label) return;
         node.style.cursor = "pointer";
-        node.addEventListener("click", () => setHighlightedSheet(label));
+        node.addEventListener("click", () => {
+          setHighlightedSheet(label);
+          cellAnalysisRef.current?.selectSheet(label);
+        });
       });
     }).catch((err) => {
       console.error("Mermaid rendering failed:", err);
@@ -224,14 +248,22 @@ function App() {
 
   // Cell references rendered in the markdown summary (e.g. the "Formulas
   // referencing other sheets" tables) carry data-sheet-ref/data-cell-ref —
-  // clicking one runs Find on that cell in the panel below.
+  // clicking one runs Find on that cell in the panel below. Sheet names
+  // (e.g. the "Used by this sheet" / "Uses this sheet" lists) carry only
+  // data-sheet-ref — clicking one just selects that sheet and previews it.
   const handleMarkdownClick = (e) => {
-    const target = e.target.closest("[data-cell-ref]");
-    if (!target) return;
-    const sheet = target.getAttribute("data-sheet-ref");
-    const coord = target.getAttribute("data-cell-ref");
-    if (sheet && coord) {
-      cellAnalysisRef.current?.findCell(sheet, coord);
+    const cellTarget = e.target.closest("[data-cell-ref]");
+    if (cellTarget) {
+      const sheet = cellTarget.getAttribute("data-sheet-ref");
+      const coord = cellTarget.getAttribute("data-cell-ref");
+      if (sheet && coord) cellAnalysisRef.current?.findCell(sheet, coord);
+      return;
+    }
+
+    const sheetTarget = e.target.closest("[data-sheet-ref]");
+    if (sheetTarget) {
+      const sheet = sheetTarget.getAttribute("data-sheet-ref");
+      if (sheet) cellAnalysisRef.current?.selectSheet(sheet);
     }
   };
 
@@ -297,7 +329,7 @@ function App() {
         </div>
       </header>
 
-      <main>
+      <main data-maximized={maximizedPanel || undefined}>
         {!hasContent ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div className="card" style={{ maxWidth: 420, width: "100%" }}>
@@ -342,19 +374,27 @@ function App() {
                 <div className="card">
                   <div className="card-header">
                     <h2>Summary</h2>
-                    <div className="markdown-actions">
-                      {copyFeedback && <span className="copy-feedback">{copyFeedback}</span>}
-                      <button onClick={copyMarkdownToClipboard}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                        </svg>
-                        Copy Markdown
-                      </button>
+                    <div className="card-header-actions">
+                      <div className="markdown-actions">
+                        {copyFeedback && <span className="copy-feedback">{copyFeedback}</span>}
+                        <button onClick={copyMarkdownToClipboard}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                          </svg>
+                          Copy Markdown
+                        </button>
+                      </div>
+                      <PanelControls
+                        collapsed={collapsedPanels.summary}
+                        maximized={maximizedPanel === "summary"}
+                        onToggleCollapse={() => toggleCollapse("summary")}
+                        onToggleMaximize={() => toggleMaximize("summary")}
+                      />
                     </div>
                   </div>
                   <div
-                    className="markdown-body"
+                    className={`markdown-body${collapsedPanels.summary ? " panel-collapsed" : ""}`}
                     onClick={handleMarkdownClick}
                     dangerouslySetInnerHTML={{ __html: marked.parse(summary) }}
                   />
@@ -367,40 +407,50 @@ function App() {
                 <div className="card graph-card">
                   <div className="card-header">
                     <h2>Dependency Graph</h2>
-                    <div className="graph-controls">
-                      <button onClick={() => panZoomRef.current?.zoomOut()} title="Zoom out">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/>
-                        </svg>
-                      </button>
-                      <button onClick={() => panZoomRef.current?.reset()} title="Reset view">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                          <path d="M3 3v5h5"/>
-                        </svg>
-                      </button>
-                      <button onClick={() => panZoomRef.current?.zoomIn()} title="Zoom in">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
-                        </svg>
-                      </button>
-                      <button onClick={handleToggleDirection} title="Toggle layout direction">
-                        {graphDirection === "TD" ? (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    <div className="card-header-actions">
+                      <div className="graph-controls">
+                        <button onClick={() => panZoomRef.current?.zoomOut()} title="Zoom out">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/>
                           </svg>
-                        ) : (
+                        </button>
+                        <button onClick={() => panZoomRef.current?.reset()} title="Reset view">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
                           </svg>
-                        )}
-                        {graphDirection === "TD" ? "Left→Right" : "Top→Down"}
-                      </button>
+                        </button>
+                        <button onClick={() => panZoomRef.current?.zoomIn()} title="Zoom in">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+                          </svg>
+                        </button>
+                        <button onClick={handleToggleDirection} title="Toggle layout direction">
+                          {graphDirection === "TD" ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+                            </svg>
+                          )}
+                          {graphDirection === "TD" ? "Left→Right" : "Top→Down"}
+                        </button>
+                      </div>
+                      <PanelControls
+                        collapsed={collapsedPanels.graph}
+                        maximized={maximizedPanel === "graph"}
+                        onToggleCollapse={() => toggleCollapse("graph")}
+                        onToggleMaximize={() => toggleMaximize("graph")}
+                      />
                     </div>
                   </div>
-                  <PanZoom ref={panZoomRef}>
-                    <div className="mermaid" />
-                  </PanZoom>
+                  <div className={`graph-body${collapsedPanels.graph ? " panel-collapsed" : ""}`}>
+                    <PanZoom ref={panZoomRef}>
+                      <div className="mermaid" />
+                    </PanZoom>
+                  </div>
                 </div>
               )}
 
@@ -408,6 +458,10 @@ function App() {
                 ref={cellAnalysisRef}
                 sheetNames={sheetNamesRef.current}
                 workbook={workbookRef.current}
+                collapsed={collapsedPanels.find}
+                maximized={maximizedPanel === "find"}
+                onToggleCollapse={() => toggleCollapse("find")}
+                onToggleMaximize={() => toggleMaximize("find")}
               />
             </div>
           </>

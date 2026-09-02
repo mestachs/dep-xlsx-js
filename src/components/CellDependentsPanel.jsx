@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import * as XLSX from "xlsx";
 import SheetPreviewGrid from "./SheetPreviewGrid.jsx";
+import PanelControls from "./PanelControls.jsx";
 
 const InfoIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -78,7 +79,7 @@ const parseTarget = (raw, fallbackSheet) => {
  *   ref.current.reset()   ← clears form and results, called when a new file loads
  */
 const CellDependentsPanel = forwardRef(function CellDependentsPanel(
-  { sheetNames, workbook },
+  { sheetNames, workbook, collapsed, maximized, onToggleCollapse, onToggleMaximize },
   ref
 ) {
   const [selectedSheet, setSelectedSheet]   = useState("");
@@ -108,6 +109,21 @@ const CellDependentsPanel = forwardRef(function CellDependentsPanel(
       setTrail([]);
       runFind(sheet, coord);
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    // Called from outside (e.g. clicking a sheet node in the dependency
+    // graph) to select that sheet and show its preview, without running a
+    // Find (there's no specific cell yet — that's still what Find is for).
+    selectSheet: (sheetName) => {
+      const resolved = workbook?.SheetNames.find(
+        (name) => name.toLowerCase() === sheetName.toLowerCase()
+      );
+      if (!resolved) return;
+      setSelectedSheet(resolved);
+      setCellCoordinate("");
+      setDependents([]);
+      setDependencies([]);
+      setTrail([]);
+      setPreviewTarget({ sheet: resolved, coord: "A1" });
     },
   }));
 
@@ -417,15 +433,25 @@ const CellDependentsPanel = forwardRef(function CellDependentsPanel(
     <div className="card cell-analysis" ref={rootRef}>
       <div className="card-header">
         <h2>Find Cell Dependents &amp; Dependencies</h2>
+        <PanelControls
+          collapsed={collapsed}
+          maximized={maximized}
+          onToggleCollapse={onToggleCollapse}
+          onToggleMaximize={onToggleMaximize}
+        />
       </div>
-      <div className="card-body">
+      <div className={`card-body${collapsed ? " panel-collapsed" : ""}`}>
         <div className="cell-analysis-fields">
           <div className="field-group">
             <label htmlFor="sheet-select">Sheet</label>
             <select
               id="sheet-select"
               value={selectedSheet}
-              onChange={(e) => setSelectedSheet(e.target.value)}
+              onChange={(e) => {
+                const sheet = e.target.value;
+                setSelectedSheet(sheet);
+                if (sheet) setPreviewTarget({ sheet, coord: "A1" });
+              }}
             >
               <option value="">Select a sheet…</option>
               {sheetNames?.map((name) => (
@@ -494,6 +520,7 @@ const CellDependentsPanel = forwardRef(function CellDependentsPanel(
               workbook={workbook}
               sheet={previewTarget.sheet}
               cellAddress={previewTarget.coord}
+              onCellClick={(coord) => navigateTo(previewTarget.sheet, coord)}
             />
           </div>
         )}

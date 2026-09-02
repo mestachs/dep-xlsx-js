@@ -23,8 +23,11 @@ const cellDisplay = (cell) => {
  * Renders a scrollable window of a worksheet's grid (row/column headers,
  * cell values) with one cell highlighted — lets you see exactly where a
  * dependent/dependency actually sits on its sheet.
+ *
+ * When onCellClick is given, non-target cells become clickable — lets you
+ * jump straight from the preview into Find for that cell.
  */
-const SheetPreviewGrid = ({ workbook, sheet, cellAddress }) => {
+const SheetPreviewGrid = ({ workbook, sheet, cellAddress, onCellClick }) => {
   const targetCellRef = useRef(null);
 
   const target = cellAddress
@@ -84,13 +87,20 @@ const SheetPreviewGrid = ({ workbook, sheet, cellAddress }) => {
                 const cell = worksheet[addr];
                 const isTarget = r === target.r && c === target.c;
                 const display = cellDisplay(cell);
-                const title = cell?.f ? `${addr}: =${cell.f}` : (display ? `${addr}: ${display}` : addr);
+                const clickable = Boolean(onCellClick) && !isTarget;
+                let title = cell?.f ? `${addr}: =${cell.f}` : (display ? `${addr}: ${display}` : addr);
+                if (clickable) title += " — click to navigate";
+                const className = [
+                  isTarget && "sheet-preview-target-cell",
+                  clickable && "sheet-preview-clickable-cell",
+                ].filter(Boolean).join(" ") || undefined;
                 return (
                   <td
                     key={c}
                     ref={isTarget ? targetCellRef : undefined}
-                    className={isTarget ? "sheet-preview-target-cell" : undefined}
+                    className={className}
                     title={title}
+                    onClick={clickable ? () => onCellClick(addr) : undefined}
                   >
                     {display}
                   </td>
