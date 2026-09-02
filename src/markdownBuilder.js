@@ -1,5 +1,16 @@
 import * as XLSX from 'xlsx';
 
+// Minimal attribute-safe escaping for the data-* attributes we embed below —
+// sheet names and cell addresses are attacker-free here, but this keeps the
+// generated HTML well-formed regardless (e.g. a sheet name containing `"`).
+function escapeAttr(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 export function buildMarkdownSummary(sheetNames, sheetDependencies, workbook, initialVisibility, graph, sheetFormulaDetails) {
     const summaryLines = [];
     summaryLines.push('# XLSX Dependency Analysis');
@@ -67,7 +78,9 @@ export function buildMarkdownSummary(sheetNames, sheetDependencies, workbook, in
                 summaryLines.push('| Cell | Formula |');
                 summaryLines.push('|---|---|');
                 formulasByReferencedSheet.get(refSheet).slice(0, 10).forEach(detail => {
-                    summaryLines.push(`| \`${detail.cellAddress}\` | \`${detail.formula}\` |`);
+                    const sheetAttr = escapeAttr(sheetName);
+                    const cellAttr = escapeAttr(detail.cellAddress);
+                    summaryLines.push(`| <code data-sheet-ref="${sheetAttr}" data-cell-ref="${cellAttr}" class="cell-ref-link">${detail.cellAddress}</code> | \`${detail.formula}\` |`);
                 });
                 // Add a message if there are more than 10 formulas for this specific referenced sheet
                 if (formulasByReferencedSheet.get(refSheet).length > 10) {
