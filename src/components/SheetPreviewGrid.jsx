@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
+import { extractThemeColors, getCellFillColor } from "../lib/cellFill.js";
 
-const VISIBLE_ROWS = 26;
-const VISIBLE_COLS = 14;
+// Fallback window size when the sheet is too large to render in full (see
+// MAX_CELLS below) — centered on the target cell.
+const VISIBLE_ROWS = 150;
+const VISIBLE_COLS = 40;
+
+// A sheet's !ref range is often much bigger than its real data (Excel keeps
+// stray formatting on cells far outside actual content), so rendering
+// "however big !ref claims to be" isn't safe as a blind default — a
+// worksheet reporting e.g. A1:AZ50000 would mean 1.3M <td> elements and lock
+// up the tab. Below this cell-count budget we render the sheet's whole
+// range; above it we fall back to a centered window around the target.
+const MAX_CELLS = 6000;
 
 const InfoIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -36,6 +47,8 @@ const SheetPreviewGrid = ({ workbook, sheet, cellAddress, onCellClick }) => {
 
   const worksheet = sheet ? workbook?.Sheets[sheet] : null;
 
+  const themeColors = useMemo(() => extractThemeColors(workbook), [workbook]);
+
   const sheetRange = useMemo(() => {
     if (!worksheet) return null;
     return worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
@@ -54,16 +67,22 @@ const SheetPreviewGrid = ({ workbook, sheet, cellAddress, onCellClick }) => {
     );
   }
 
+  const minRow = sheetRange.s.r;
+  const minCol = sheetRange.s.c;
   const maxRow = sheetRange.e.r;
   const maxCol = sheetRange.e.c;
 
-  const startR = clamp(target.r - Math.floor(VISIBLE_ROWS / 3), 0, Math.max(0, maxRow - VISIBLE_ROWS + 1));
-  const startC = clamp(target.c - Math.floor(VISIBLE_COLS / 3), 0, Math.max(0, maxCol - VISIBLE_COLS + 1));
+  const fitsInFull = (maxRow - minRow + 1) * (maxCol - minCol + 1) <= MAX_CELLS;
+
+  const startR = fitsInFull ? minRow : clamp(target.r - Math.floor(VISIBLE_ROWS / 3), minRow, Math.max(minRow, maxRow - VISIBLE_ROWS + 1));
+  const startC = fitsInFull ? minCol : clamp(target.c - Math.floor(VISIBLE_COLS / 3), minCol, Math.max(minCol, maxCol - VISIBLE_COLS + 1));
+  const endR = fitsInFull ? maxRow : Math.min(startR + VISIBLE_ROWS - 1, maxRow);
+  const endC = fitsInFull ? maxCol : Math.min(startC + VISIBLE_COLS - 1, maxCol);
 
   const rows = [];
-  for (let r = startR; r <= Math.min(startR + VISIBLE_ROWS - 1, maxRow); r++) rows.push(r);
+  for (let r = startR; r <= endR; r++) rows.push(r);
   const cols = [];
-  for (let c = startC; c <= Math.min(startC + VISIBLE_COLS - 1, maxCol); c++) cols.push(c);
+  for (let c = startC; c <= endC; c++) cols.push(c);
 
   return (
     <div className="sheet-preview-wrapper">
@@ -94,12 +113,14 @@ const SheetPreviewGrid = ({ workbook, sheet, cellAddress, onCellClick }) => {
                   isTarget && "sheet-preview-target-cell",
                   clickable && "sheet-preview-clickable-cell",
                 ].filter(Boolean).join(" ") || undefined;
+                const fillColor = getCellFillColor(cell, themeColors);
                 return (
                   <td
                     key={c}
                     ref={isTarget ? targetCellRef : undefined}
                     className={className}
                     title={title}
+                    style={fillColor ? { backgroundColor: fillColor } : undefined}
                     onClick={clickable ? () => onCellClick(addr) : undefined}
                   >
                     {display}

@@ -516,6 +516,14 @@ const CellDependentsPanel = forwardRef(function CellDependentsPanel(
             <h3 className="dependents-result-heading">
               Sheet Preview <span>— {previewTarget.sheet}!{previewTarget.coord}</span>
             </h3>
+            {(() => {
+              const previewFormula = formulaOf(workbook?.Sheets?.[previewTarget.sheet], previewTarget.coord);
+              return previewFormula ? (
+                <code className="sheet-preview-formula" style={{ display: "block", fontSize: "0.82em", wordBreak: "break-all", marginBottom: "0.5em" }}>
+                  ={previewFormula}
+                </code>
+              ) : null;
+            })()}
             <SheetPreviewGrid
               workbook={workbook}
               sheet={previewTarget.sheet}

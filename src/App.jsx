@@ -130,7 +130,8 @@ function App() {
 
     // sheetStubs:true preserves cells whose cached value is empty (<v/>),
     // which xlsx.js otherwise drops — those cells often carry the only formula text.
-    const workbook = XLSX.read(data, { type: "array", cellFormula: true, sheetStubs: true });
+    // cellStyles:true exposes each cell's fill color (cell.s) for the sheet preview.
+    const workbook = XLSX.read(data, { type: "array", cellFormula: true, sheetStubs: true, cellStyles: true });
     workbookRef.current = workbook;
     const sheetNames = workbook.SheetNames;
     const { sheetDependencies, sheetFormulaDetails } = buildSheetDependencies(workbook);
